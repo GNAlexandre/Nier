@@ -1,4 +1,4 @@
-# This workflow will build a .NET project
+ # This workflow will build a .NET project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
 
 name: .NET
@@ -8,8 +8,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-
-permissions:
+    
+permissions: 
   id-token: write
   contents: write
   packages: write
@@ -42,33 +42,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - name: Run Unit test
-        working-directory: ./tests/Leonardo.Tests
-        run: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=./coverage/opencover.xml
-      - run: dotnet publish ./src/Leonardo.Web/Leonardo.Web.csproj --self-contained true --output ./win-x64/fibonacci -c Release -r win-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true /p:PublishReadyToRun=true
-      - name: Upload WebApp Build Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: Publish win-x64 Fibonacci
-          path: ./win-x64/fibonacci
-      - name: Publish Fibonacci to Nugget
-        working-directory: ./src/Leonardo
-        if: github.ref == 'refs/heads/main'
-        run: |
-          dotnet pack -c Release -p:PackageVersion=${{ needs.tags.outputs.new_version }}
-          dotnet nuget push ./bin/Release/Alexandre.Tournel.Fibonacci.${{ needs.tags.outputs.new_version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    - name: Run Unit test
+      working-directory: ./tests/Demo.Tests
+      run: dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=./coverage/opencover.xml
+    - run: dotnet publish ./src/Demo.Web/Demo.Web.csproj --self-contained true --output ./win-x64/nier -c Release -r win-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true /p:PublishReadyToRun=true
+    - name: Upload WebApp Build Artifact
+      uses: actions/upload-artifact@v3
+      with:          
+        name: Publish win-x64 Nier
+        path: ./win-x64/nier 
+    - name: Publish Nier to Nugget
+      working-directory: ./src/Demo
+      if: github.ref == 'refs/heads/main'
+      run: |
+        dotnet pack -c Release -p:PackageVersion=${{ needs.tags.outputs.new_version }}
+        dotnet nuget push ./bin/Release/Alexandre.Tournel.Nier.${{ needs.tags.outputs.new_version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
   
   
   build_docker_webapp:
     needs: [ tags ]
     uses: ./.github/workflows/docker.yml
     with:
-      image_name: "fibonacci"
+      image_name: "nier"
       image_version: ${{ needs.tags.outputs.new_version }}
       image_build_args: ""
       image_context: .
@@ -77,5 +77,18 @@ jobs:
       docker_repository: "gnalexandre"
     secrets:
       DOCKER_USERNAME: ${{ github.actor }}
-      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-  
+      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }} 
+      
+  deploy_azure:
+    needs: [ build_docker_webapp, tags ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{secrets.AZURE_CREDENTIALS}}
+      - name: Publish Docker
+        if: github.ref == 'refs/heads/main'
+        run: |
+          az group create --name NierGithub --location northeurope
+          az container create -g NierGithub --name fibo  --dns-name-label fibo-atournel --image ghcr.io/gnalexandre/nier:${{ needs.tags.outputs.new_version }} --environment-variables "ASPNETCORE_URLS=http://*:8080" --ports 8080 --os-type Linux --cpu 1 --memory 1 
